@@ -1,16 +1,22 @@
 import express from "express";
 import { PrismaClient } from "@prisma/client";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { sanitizeCpfCnpj, isValidCpfCnpj } from "../utils/validateCpfCnpj.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
-import { authMiddleware } from "../middleware/authMiddleware.js";
 
 router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
-  const { cpfcnpj } = req.params;
+  const raw = req.params.cpfcnpj;
+  const clean = sanitizeCpfCnpj(raw);
+
+  if (!isValidCpfCnpj(clean)) {
+    return res.status(400).json({ error: "CPF/CNPJ inválido" });
+  }
 
   try {
     const empresa = await prisma.tempresa.findUnique({
-      where: { cpfcnpj },
+      where: { cpfcnpj: clean },
       include: {
         sessions: {
           select: {
