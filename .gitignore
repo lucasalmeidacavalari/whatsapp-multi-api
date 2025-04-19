@@ -1,0 +1,41 @@
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# dotenv environment files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Baileys session files
+auth_info*
+session.data*
+*/auth_info*
+*/session.data*
+baileys_auth_info*
+baileys_store*
+
+# Build
+dist/
+build/
+
+# Optional: IDE configs
+.vscode/
+.idea/
+
+# Docker
+docker-compose.override.yml
+
+# Prisma
+prisma/dev.db
+prisma/dev.db-journal
