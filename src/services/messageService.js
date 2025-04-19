@@ -1,10 +1,9 @@
 import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys";
-import path from "path";
 import fs from "fs/promises";
 import { PrismaClient } from "@prisma/client";
+import { waitForConnectionOpen } from "../utils/sessionManager.js";
 
 const prisma = new PrismaClient();
-const sessionsPath = path.resolve("sessions");
 
 export async function sendTextMessage({ sessionName, to, message }) {
   // 1. Busca sessão no banco
@@ -55,16 +54,4 @@ export async function sendTextMessage({ sessionName, to, message }) {
     to: result.jid,
     message,
   };
-}
-
-function waitForConnectionOpen(sock) {
-  return new Promise((resolve) => {
-    const listener = (update) => {
-      if (update.connection === "open") {
-        sock.ev.off("connection.update", listener);
-        resolve();
-      }
-    };
-    sock.ev.on("connection.update", listener);
-  });
 }
