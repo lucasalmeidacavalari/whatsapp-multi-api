@@ -1,12 +1,13 @@
 import express from "express";
 import dotenv from "dotenv";
+import connectRoutes from "./routes/connectRoutes.js";
 import sessionRoutes from "./routes/sessionRoutes.js";
 
 dotenv.config();
-
 const app = express();
 app.use(express.json());
 
+app.use("/api", connectRoutes);
 app.use("/api", sessionRoutes);
 
 app.get("/", (req, res) => {
