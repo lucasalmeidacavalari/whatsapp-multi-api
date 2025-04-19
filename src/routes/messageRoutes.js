@@ -1,0 +1,22 @@
+import express from 'express';
+import { sendTextMessage } from '../services/messageService.js';
+
+const router = express.Router();
+
+router.post('/send-text', async (req, res) => {
+  const { sessionName, to, message } = req.body;
+
+  if (!sessionName || !to || !message) {
+    return res.status(400).json({ error: 'sessionName, to e message são obrigatórios' });
+  }
+
+  try {
+    const result = await sendTextMessage({ sessionName, to, message });
+    return res.json(result);
+  } catch (err) {
+    console.error('Erro ao enviar mensagem:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;
