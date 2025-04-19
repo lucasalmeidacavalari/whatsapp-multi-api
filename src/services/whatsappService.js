@@ -8,12 +8,13 @@ import { v4 as uuidv4 } from "uuid";
 import qrcode from "qrcode";
 import fs from "fs";
 import path from "path";
-import prisma from "../../prisma/client.js";
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
 
 const sessionsPath = path.resolve("sessions");
 
 export async function connectSession({ cpfcnpj, numero }) {
-  const sessionName = uuidv4(); 
+  const sessionName = uuidv4();
   const sessionDir = path.join(sessionsPath, sessionName);
 
   fs.mkdirSync(sessionDir, { recursive: true });
