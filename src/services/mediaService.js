@@ -1,7 +1,6 @@
 import mime from "mime-types";
 import { PrismaClient } from "@prisma/client";
-import { useMultiFileAuthState, makeWASocket } from "@whiskeysockets/baileys";
-import { waitForConnectionOpen } from "../utils/sessionManager.js";
+import { getOrCreateSession } from "../utils/sessionManager.js";
 import { normalizeNumber } from "../utils/normalizeNumber.js";
 
 const prisma = new PrismaClient();
@@ -18,11 +17,7 @@ export async function sendMedia({
     throw new Error("Sessão não encontrada ou desconectada");
 
   const sessionDir = session.sessionPath;
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-  const sock = makeWASocket({ auth: state });
-  sock.ev.on("creds.update", saveCreds);
-
-  await waitForConnectionOpen(sock);
+  const sock = await getOrCreateSession(sessionName, sessionDir);
   await new Promise((res) => setTimeout(res, 2000));
 
   const mimeType = mime.lookup(originalName) || "application/octet-stream";

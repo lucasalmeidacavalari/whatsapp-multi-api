@@ -1,7 +1,6 @@
-import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys";
 import fs from "fs/promises";
 import { PrismaClient } from "@prisma/client";
-import { waitForConnectionOpen } from "../utils/sessionManager.js";
+import { getOrCreateSession } from "../utils/sessionManager.js";
 import { normalizeNumber } from "../utils/normalizeNumber.js";
 
 const prisma = new PrismaClient();
@@ -14,11 +13,7 @@ export async function sendTextMessage({ sessionName, to, message }) {
   const sessionDir = session.sessionPath;
   await fs.access(sessionDir);
 
-  const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-  const sock = makeWASocket({ auth: state });
-  sock.ev.on("creds.update", saveCreds);
-
-  await waitForConnectionOpen(sock);
+  const sock = await getOrCreateSession(sessionName, sessionDir);
   await new Promise((res) => setTimeout(res, 2000));
 
   const numbers = Array.isArray(to) ? to : [to];
