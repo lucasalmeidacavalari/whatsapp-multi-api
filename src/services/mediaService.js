@@ -12,9 +12,7 @@ export async function sendMedia({
   originalName,
   caption,
 }) {
-  const session = await prisma.tsession.findFirst({
-    where: { sessionName },
-  });
+  const session = await prisma.tsession.findFirst({ where: { sessionName } });
 
   if (!session || !session.isConnected) {
     throw new Error("Sessão não encontrada ou desconectada");
@@ -28,42 +26,50 @@ export async function sendMedia({
 
   await waitForConnectionOpen(sock);
 
-  const number = to.replace(/\D/g, "");
-  const jid = `${number}@s.whatsapp.net`;
+  const numbers = Array.isArray(to) ? to : [to];
+  const results = [];
 
-  const mimeType = mime.lookup(originalName) || "application/octet-stream";
+  for (const num of numbers) {
+    const number = num.replace(/\D/g, "");
+    let [result] = await sock.onWhatsApp(number);
 
-  let message;
+    let numberWithNine = null;
+    if (
+      !result ||
+      !result.exists ||
+      result.jid !== `${number}@s.whatsapp.net`
+    ) {
+      numberWithNine = number.replace(/^(55\d{2})(\d{8})$/, "$19$2");
+      [result] = await sock.onWhatsApp(numberWithNine);
+    }
 
-  if (mimeType.startsWith("image/")) {
-    message = {
-      image: buffer,
-      caption,
-    };
-  } else if (mimeType.startsWith("video/")) {
-    message = {
-      video: buffer,
-      caption,
-    };
-  } else if (mimeType.startsWith("audio/")) {
-    message = {
-      audio: buffer,
-      mimetype: mimeType,
-      ptt: false,
-    };
-  } else {
-    message = {
-      document: buffer,
-      mimetype: mimeType,
-      fileName: originalName,
-      caption,
-    };
+    if (!result || !result.exists) {
+      results.push({ to: num, status: "Número não encontrado no WhatsApp" });
+      continue;
+    }
+
+    const jid = result.jid;
+    const mimeType = mime.lookup(originalName) || "application/octet-stream";
+
+    let message;
+    if (mimeType.startsWith("image/")) {
+      message = { image: buffer, caption };
+    } else if (mimeType.startsWith("video/")) {
+      message = { video: buffer, caption };
+    } else if (mimeType.startsWith("audio/")) {
+      message = { audio: buffer, mimetype: mimeType, ptt: false };
+    } else {
+      message = {
+        document: buffer,
+        mimetype: mimeType,
+        fileName: originalName,
+        caption,
+      };
+    }
+
+    await sock.sendMessage(jid, message);
+    results.push({ to: jid, status: "Mídia enviada com sucesso" });
   }
 
-  await sock.sendMessage(jid, message);
-
-  return {
-    success: true,
-    to: jid,
-  };
+  return { success: true, results };
 }
