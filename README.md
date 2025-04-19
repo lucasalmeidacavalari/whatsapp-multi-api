@@ -1,107 +1,75 @@
 # WhatsApp Multi-Sessão API
 
-Uma API Node.js para envio de mensagens e mídias via WhatsApp com suporte a múltiplas sessões (multi-número), utilizando Baileys, Express, Prisma e PostgreSQL.
+API RESTful para envio de mensagens e mídias via WhatsApp com suporte a múltiplas sessões utilizando Baileys, Node.js, Express, Prisma e Docker.
 
-## 🚀 Tecnologias
+## Recursos
 
-- Node.js + Express
-- Baileys (WhatsApp Web API)
-- PostgreSQL + Prisma ORM
-- Docker + Nodemon
-- JWT Auth (Bearer Token)
+- Multi-sessão com reconexão automática
+- Suporte a CPF/CNPJ como identificador da empresa
+- Envio de texto, imagem, vídeo, áudio e documentos
+- Validação automática de número (suporte internacional)
+- Consulta de grupos por sessão
+- Sessões persistidas em disco e banco de dados PostgreSQL
+- Autenticação via Bearer Token
+- Pronto para deploy via Docker
 
-## ⚙️ Funcionalidades
+## Endpoints
 
-- Conectar e autenticar múltiplos números de WhatsApp
-- Enviar mensagens de texto ou mídia (PDF, imagem, áudio, etc)
-- Suporte a grupos e números internacionais
-- Sessões persistentes com reconexão automática
-- Validações de CPF/CNPJ e número de WhatsApp
-- Token de autenticação via `.env`
+### Sessão
 
-## 📁 Estrutura
+- `POST /connect`: Cria nova sessão para o CPF/CNPJ informado
+- `GET /session-status/:cpfcnpj`: Retorna as sessões ativas/inativas da empresa
+
+### Mensagens
+
+- `POST /send-text`: Envia texto para um ou vários contatos ou grupos
+- `POST /send-media`: Envia mídias para contatos ou grupos (aceita multipart/form-data)
+
+### Grupos
+
+- `GET /groups/:sessionName`: Lista os grupos visíveis para a sessão
+
+## Autenticação
+
+Todos os endpoints exigem Bearer Token (exemplo: `Authorization: Bearer seu_token_aqui`).
+
+## Variáveis de ambiente
+
+Crie um arquivo `.env` com o seguinte conteúdo:
 
 ```
-src/
-├── middleware/           # Auth Middleware
-├── routes/               # Rotas Express
-├── services/             # Lógica de envio e conexão
-├── utils/                # Validações e helpers
-├── prisma/               # Esquema e migrações
-└── index.js              # Inicialização do servidor
-```
-
-## 🔐 Autenticação
-
-Todas as rotas protegidas requerem `Bearer Token` no header da requisição.
-
-```http
-Authorization: Bearer SEU_TOKEN_AQUI
-```
-
-## 📦 Rotas principais
-
-### Conectar um novo número (gera QR code)
-
-`POST /api/connect`
-
-```json
-{
-  "cpfcnpj": "49449213810",
-  "nome": "Empresa Exemplo"
-}
-```
-
-### Verificar sessões ativas por CNPJ
-
-`GET /api/session-status/:cpfcnpj`
-
-### Enviar mensagem de texto
-
-`POST /api/send-text`
-
-```json
-{
-  "sessionName": "uuid-da-sessao",
-  "to": ["+5511888887777", "+5511999998888", "5511988887777"],
-  "message": "Olá!"
-}
-```
-
-### Enviar mídia (via multipart/form-data)
-
-`POST /api/send-media`
-
-```form-data
-- sessionName: uuid-da-sessao
-- to: +5511888887777
-- caption: Arquivo importante
-- file: arquivo.pdf (upload)
-```
-
-### Listar grupos da sessão
-
-`GET /api/list-groups/:sessionName`
-
-## 🧪 Testes com Postman
-
-- Use o Bearer token no campo de Authorization
-- Configure as requisições conforme os exemplos acima
-
-## 🛠️ Variáveis de Ambiente (.env)
-
-```env
+DATABASE_URL=postgresql://postgres:postgres@db:5432/whatsappdb
+JWT_SECRET=sua_chave_jwt_aqui
 PORT=3003
-JWT_SECRET=sua_chave_secreta
-DATABASE_URL=postgresql://usuario:senha@host:porta/db
 ```
 
-## 🐳 Docker
+## Uso com Docker
 
 ```bash
-docker-compose up --build
+docker-compose up -d --build
 ```
 
-## 🧠 Créditos
+## Estrutura
 
-Desenvolvido por Lucas Cavalari com ♥ usando Baileys e Node.js.
+```
+├── prisma/
+│   └── schema.prisma
+├── src/
+│   ├── routes/
+│   ├── services/
+│   ├── utils/
+│   └── index.js
+├── sessions/  # onde ficam as sessões
+├── .env
+├── Dockerfile
+├── docker-compose.yml
+```
+
+## Observações
+
+- Os arquivos de mídia enviados não são armazenados no servidor
+- O número do WhatsApp é normalizado automaticamente, incluindo tentativas com o "9" em números brasileiros
+
+---
+
+Desenvolvido por [Seu Time]
