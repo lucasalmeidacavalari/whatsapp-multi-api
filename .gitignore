@@ -40,4 +40,4 @@ docker-compose.override.yml
 prisma/dev.db
 prisma/dev.db-journal
 
-session/*
+sessions/*
