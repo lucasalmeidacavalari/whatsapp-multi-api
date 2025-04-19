@@ -11,7 +11,7 @@ export function authMiddleware(req, res, next) {
 
   const token = authHeader.split(" ")[1];
 
-  if (token !== process.env.BEARER_TOKEN) {
+  if (token !== process.env.JWT_SECRET) {
     return res.status(403).json({ error: "Token inválido" });
   }
 
