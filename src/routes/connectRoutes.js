@@ -1,9 +1,10 @@
 import express from "express";
 import { connectSession } from "../services/whatsappService.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/connect", async (req, res) => {
+router.post("/connect", authMiddleware, async (req, res) => {
   const { cpfcnpj, nome } = req.body;
 
   if (!cpfcnpj || !nome) {

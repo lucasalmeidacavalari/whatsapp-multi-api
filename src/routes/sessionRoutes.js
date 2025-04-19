@@ -3,8 +3,9 @@ import { PrismaClient } from "@prisma/client";
 
 const router = express.Router();
 const prisma = new PrismaClient();
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
-router.get("/session-status/:cpfcnpj", async (req, res) => {
+router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
   const { cpfcnpj } = req.params;
 
   try {

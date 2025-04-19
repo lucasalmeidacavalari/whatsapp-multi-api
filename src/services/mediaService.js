@@ -62,5 +62,8 @@ export async function sendMedia({
 
   await sock.sendMessage(jid, message);
 
-  return { success: true };
+  return {
+    success: true,
+    to: jid,
+  };
 }
