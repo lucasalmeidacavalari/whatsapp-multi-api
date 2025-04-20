@@ -56,6 +56,10 @@ Authorization: Bearer SEU_TOKEN_AQUI
 
 `GET /api/session-status/:cpfcnpj`
 
+Opcionalmente, é possível filtrar por número:
+
+`GET /api/session-status/:cpfcnpj?numero=9888`
+
 ### Enviar mensagem de texto
 
 `POST /api/send-text`
