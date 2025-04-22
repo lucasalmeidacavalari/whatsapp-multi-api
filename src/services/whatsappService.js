@@ -19,7 +19,7 @@ export async function connectSession({ cpfcnpj, nome }) {
 
     if (!empresa) {
       empresa = await prisma.tempresa.create({
-        data: { cpfcnpj, nome },
+        data: { cpfcnpj },
       });
     }
 
@@ -64,6 +64,7 @@ export async function connectSession({ cpfcnpj, nome }) {
                 sessionName,
                 numero,
                 sessionPath: sessionDir,
+                nomeCelular: nome,
                 isConnected: true,
               },
             });
@@ -88,8 +89,9 @@ export async function connectSession({ cpfcnpj, nome }) {
                 sessionDir,
                 sessionName,
                 empresaId: empresa.id,
+                nomeCelular: nome,
               });
-            }, 10000); // tenta reconectar com 10s de intervalo
+            }, 10000);
           }
         }
       });
@@ -102,7 +104,12 @@ export async function connectSession({ cpfcnpj, nome }) {
   }
 }
 
-async function iniciarSocket({ sessionDir, sessionName, empresaId }) {
+async function iniciarSocket({
+  sessionDir,
+  sessionName,
+  empresaId,
+  nomeCelular = "Desconhecido",
+}) {
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
   const sock = makeWASocket({
     auth: state,
@@ -129,6 +136,7 @@ async function iniciarSocket({ sessionDir, sessionName, empresaId }) {
             sessionName,
             numero,
             sessionPath: sessionDir,
+            nomeCelular,
             isConnected: true,
           },
         });
@@ -148,8 +156,13 @@ async function iniciarSocket({ sessionDir, sessionName, empresaId }) {
       if (reason === 515) {
         console.log("Erro 515: tentando reconectar com delay...");
         setTimeout(() => {
-          iniciarSocket({ sessionDir, sessionName, empresaId }); // 🔁 reconectar com a mesma sessão
-        }, 10000); // delay de 10 segundos
+          iniciarSocket({
+            sessionDir,
+            sessionName,
+            empresaId: empresa.id,
+            nomeCelular: nome,
+          });
+        }, 10000);
       }
     }
   });

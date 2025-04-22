@@ -26,9 +26,16 @@ export async function getGroups(sessionName) {
   const groupDataMap = await sock.groupFetchAllParticipating();
   const groupList = Object.values(groupDataMap);
 
-  return groupList.map((group) => ({
-    id: group.id,
-    name: group.subject,
-    participants: group.participants?.map((p) => p.id) || [],
-  }));
+  return groupList.map((group) => {
+    const rawParticipants = group.participants || [];
+
+    const participants = rawParticipants.map((p) => p.id.split("@")[0]);
+
+    return {
+      id: group.id,
+      name: group.subject,
+      participants,
+      participantsCount: participants.length,
+    };
+  });
 }

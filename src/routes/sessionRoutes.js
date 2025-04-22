@@ -24,7 +24,7 @@ router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
           where: numero
             ? {
                 numero: {
-                  contains: numero.toString().replace(/\D/g, ""), // limpa e faz busca por trecho
+                  contains: numero.toString().replace(/\D/g, ""),
                 },
               }
             : undefined,
@@ -33,6 +33,7 @@ router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
             numero: true,
             isConnected: true,
             createdAt: true,
+            nomeCelular: true,
           },
         },
       },
@@ -43,7 +44,6 @@ router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
     }
 
     return res.json({
-      empresa: empresa.nome,
       cpfcnpj: empresa.cpfcnpj,
       sessoes: empresa.sessions,
     });
