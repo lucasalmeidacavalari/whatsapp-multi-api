@@ -14,20 +14,35 @@ router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "CPF/CNPJ inválido" });
   }
 
-  const { numero } = req.query;
+  const { numero, sessionName } = req.query;
 
   try {
     const empresa = await prisma.tempresa.findUnique({
       where: { cpfcnpj: clean },
       include: {
         sessions: {
-          where: numero
-            ? {
-                numero: {
-                  contains: numero.toString().replace(/\D/g, ""),
-                },
-              }
-            : undefined,
+          where:
+            numero || sessionName
+              ? {
+                  AND: [
+                    numero
+                      ? {
+                          numero: {
+                            contains: numero.toString().replace(/\D/g, ""),
+                          },
+                        }
+                      : {},
+                    sessionName
+                      ? {
+                          sessionName: {
+                            contains: sessionName.toString(),
+                            mode: "insensitive",
+                          },
+                        }
+                      : {},
+                  ],
+                }
+              : undefined,
           select: {
             sessionName: true,
             numero: true,
