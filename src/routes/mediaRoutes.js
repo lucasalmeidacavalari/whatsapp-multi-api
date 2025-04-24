@@ -20,13 +20,16 @@ router.post(
     }
 
     try {
-      const result = await sendMedia({
-        sessionName,
-        to,
-        caption,
-        buffer: req.file.buffer,
-        originalName: req.file.originalname,
-      });
+      const result = await sendMedia(
+        {
+          sessionName,
+          to,
+          caption,
+          buffer: req.file.buffer,
+          originalName: req.file.originalname,
+        },
+        res
+      );
 
       return res.json(result);
     } catch (err) {

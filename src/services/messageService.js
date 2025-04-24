@@ -5,7 +5,7 @@ import { normalizeNumber } from "../utils/normalizeNumber.js";
 
 const prisma = new PrismaClient();
 
-export async function sendTextMessage({ sessionName, to, message }) {
+export async function sendTextMessage({ sessionName, to, message }, res) {
   const session = await prisma.tsession.findFirst({ where: { sessionName } });
   if (!session || !session.isConnected)
     throw new Error("Sessão não encontrada ou desconectada");
@@ -13,7 +13,7 @@ export async function sendTextMessage({ sessionName, to, message }) {
   const sessionDir = session.sessionPath;
   await fs.access(sessionDir);
 
-  const sock = await getOrCreateSession(sessionName, sessionDir);
+  const sock = await getOrCreateSession(sessionName, sessionDir, res);
   await new Promise((res) => setTimeout(res, 2000));
 
   const numbers = Array.isArray(to) ? to : [to];

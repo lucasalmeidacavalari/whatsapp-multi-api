@@ -5,19 +5,16 @@ import { normalizeNumber } from "../utils/normalizeNumber.js";
 
 const prisma = new PrismaClient();
 
-export async function sendMedia({
-  sessionName,
-  to,
-  buffer,
-  originalName,
-  caption,
-}) {
+export async function sendMedia(
+  { sessionName, to, buffer, originalName, caption },
+  res
+) {
   const session = await prisma.tsession.findFirst({ where: { sessionName } });
   if (!session || !session.isConnected)
     throw new Error("Sessão não encontrada ou desconectada");
 
   const sessionDir = session.sessionPath;
-  const sock = await getOrCreateSession(sessionName, sessionDir);
+  const sock = await getOrCreateSession(sessionName, sessionDir, res);
   await new Promise((res) => setTimeout(res, 2000));
 
   const mimeType = mime.lookup(originalName) || "application/octet-stream";

@@ -14,7 +14,7 @@ router.post("/send-text", authMiddleware, async (req, res) => {
   }
 
   try {
-    const result = await sendTextMessage({ sessionName, to, message });
+    const result = await sendTextMessage({ sessionName, to, message }, res);
     return res.json(result);
   } catch (err) {
     console.error("Erro ao enviar mensagem:", err);

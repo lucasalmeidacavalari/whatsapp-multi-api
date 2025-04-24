@@ -1,8 +1,4 @@
-import {
-  makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-} from "@whiskeysockets/baileys";
+import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import { v4 as uuidv4 } from "uuid";
 import qrcode from "qrcode";
@@ -93,6 +89,39 @@ export async function connectSession({ cpfcnpj, nome }) {
               });
             }, 10000);
           }
+
+          if (reason === 401) {
+            console.log(
+              `Sessão ${sessionDir} desconectada devido à falha de autenticação (provavelmente celular desconectado)!`
+            );
+
+            // Precisamos obter o `empresaId` para excluir a sessão
+            const session = await prisma.tsession.findFirst({
+              where: { sessionName: sessionId },
+              select: { empresaId: true, sessionPath: true }, // Pegamos o `empresaId` e `sessionPath` associados à sessão
+            });
+
+            if (session) {
+              // Agora podemos deletar a sessão usando `empresaId` e `sessionName`
+              await prisma.tsession.delete({
+                where: {
+                  empresaId_sessionName: {
+                    empresaId: session.empresaId,
+                    sessionName: sessionId,
+                  },
+                },
+              });
+
+              // Remover a pasta da sessão local
+              await fs.rm(session.sessionPath, {
+                recursive: true,
+                force: true,
+              });
+              console.log(`Pasta da sessão ${sessionId} removida!`);
+            } else {
+              console.log("Sessão não encontrada");
+            }
+          }
         }
       });
 
@@ -163,6 +192,39 @@ async function iniciarSocket({
             nomeCelular: nome,
           });
         }, 10000);
+      }
+
+      if (reason === 401) {
+        console.log(
+          `Sessão ${sessionDir} desconectada devido à falha de autenticação (provavelmente celular desconectado)!`
+        );
+
+        // Precisamos obter o `empresaId` para excluir a sessão
+        const session = await prisma.tsession.findFirst({
+          where: { sessionName: sessionName },
+          select: { empresaId: true, sessionPath: true }, // Pegamos o `empresaId` e `sessionPath` associados à sessão
+        });
+
+        if (session) {
+          // Agora podemos deletar a sessão usando `empresaId` e `sessionName`
+          await prisma.tsession.delete({
+            where: {
+              empresaId_sessionName: {
+                empresaId: session.empresaId,
+                sessionName: sessionName,
+              },
+            },
+          });
+
+          // Remover a pasta da sessão local
+          await fs.rm(session.sessionPath, {
+            recursive: true,
+            force: true,
+          });
+          console.log(`Pasta da sessão ${sessionName} removida!`);
+        } else {
+          console.log("Sessão não encontrada");
+        }
       }
     }
   });
