@@ -1,5 +1,5 @@
 import express from "express";
-import { sendTextMessage } from "../services/messageService.js";
+import { sendTextMessageHandler } from "../services/messageService.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -14,7 +14,10 @@ router.post("/send-text", authMiddleware, async (req, res) => {
   }
 
   try {
-    const result = await sendTextMessage({ sessionName, to, message }, res);
+    const result = await sendTextMessageHandler(
+      { sessionName, to, message },
+      res
+    );
     return res.json(result);
   } catch (err) {
     console.error("Erro ao enviar mensagem:", err);

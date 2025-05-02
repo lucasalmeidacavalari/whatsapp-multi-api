@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { sendMedia } from "../services/mediaService.js";
+import { sendMediaHandler } from "../services/mediaService.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -20,7 +20,7 @@ router.post(
     }
 
     try {
-      const result = await sendMedia(
+      const result = await sendMediaHandler(
         {
           sessionName,
           to,
