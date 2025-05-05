@@ -6,7 +6,10 @@ import { withTimeout } from "../utils/withTimeout.js";
 
 const prisma = new PrismaClient();
 
-export async function sendMediaHandler(req, res) {
+export async function sendMediaHandler(
+  { sessionName, to, buffer, originalName, caption },
+  res
+) {
   const { sessionName, to, buffer, originalName, caption } = req.body;
 
   try {

@@ -6,7 +6,10 @@ import { withTimeout } from "../utils/withTimeout.js";
 
 const prisma = new PrismaClient();
 
-export async function sendTextMessageHandler(req, res) {
+export async function sendTextMessageHandler(
+  { sessionName, to, message },
+  res
+) {
   const { sessionName, to, message } = req.body;
 
   try {
