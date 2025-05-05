@@ -10,15 +10,14 @@ export async function sendMediaHandler(
   { sessionName, to, buffer, originalName, caption },
   res
 ) {
-  const { sessionName, to, buffer, originalName, caption } = req.body;
-
   try {
     const session = await prisma.tsession.findFirst({ where: { sessionName } });
-    if (!session || !session.isConnected)
+    if (!session || !session.isConnected) {
       return res.status(200).json({
         success: false,
         error: "Sessão não encontrada ou desconectada",
       });
+    }
 
     const sessionDir = session.sessionPath;
     const sock = await getOrCreateSession(sessionName, sessionDir, res);

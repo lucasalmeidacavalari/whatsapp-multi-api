@@ -6,19 +6,19 @@ import { withTimeout } from "../utils/withTimeout.js";
 
 const prisma = new PrismaClient();
 
+// Agora a função aceita os dados desestruturados diretamente
 export async function sendTextMessageHandler(
-  { sessionName, to, message },
+  { sessionName, to, message: messageText },
   res
 ) {
-  const { sessionName, to, message } = req.body;
-
   try {
     const session = await prisma.tsession.findFirst({ where: { sessionName } });
-    if (!session || !session.isConnected)
+    if (!session || !session.isConnected) {
       return res.status(200).json({
         success: false,
         error: "Sessão não encontrada ou desconectada",
       });
+    }
 
     const sessionDir = session.sessionPath;
     await fs.access(sessionDir);
@@ -81,7 +81,7 @@ export async function sendTextMessageHandler(
 
       console.log(`→ Enviando para: ${jid}`);
       try {
-        await sock.sendMessage(jid, { text: message });
+        await sock.sendMessage(jid, { text: messageText });
         results.push({ to: jid, status: "enviado" });
       } catch (error) {
         if (
