@@ -6,21 +6,24 @@ import { withTimeout } from "../utils/withTimeout.js";
 
 const prisma = new PrismaClient();
 
-export async function sendMediaHandler(
-  { sessionName, to, buffer, originalName, caption },
-  res
-) {
+export async function sendMediaHandler({
+  sessionName,
+  to,
+  buffer,
+  originalName,
+  caption,
+}) {
   try {
     const session = await prisma.tsession.findFirst({ where: { sessionName } });
     if (!session || !session.isConnected) {
-      return res.status(200).json({
+      return {
         success: false,
         error: "Sessão não encontrada ou desconectada",
-      });
+      };
     }
 
     const sessionDir = session.sessionPath;
-    const sock = await getOrCreateSession(sessionName, sessionDir, res);
+    const sock = await getOrCreateSession(sessionName, sessionDir);
     await new Promise((res) => setTimeout(res, 2000));
 
     const mimeType = mime.lookup(originalName) || "application/octet-stream";
@@ -44,7 +47,7 @@ export async function sendMediaHandler(
         try {
           [result] = await withTimeout(sock.onWhatsApp(normalized), 10000);
         } catch (error) {
-          console.error("Erro ao consultar número (normalizado):", error);
+          console.error("Erro ao consultar número:", error);
           results.push({
             to: num,
             status: "timeout ou erro ao consultar número",
@@ -52,7 +55,7 @@ export async function sendMediaHandler(
           continue;
         }
 
-        if (!result || !result.exists) {
+        if (!result?.exists) {
           const withNine = normalized.replace(/^(55\d{2})(\d{8})$/, "$19$2");
           try {
             [result] = await withTimeout(sock.onWhatsApp(withNine), 10000);
@@ -66,7 +69,7 @@ export async function sendMediaHandler(
           }
         }
 
-        if (!result || !result.exists) {
+        if (!result?.exists) {
           results.push({
             to: num,
             status: "número não encontrado no WhatsApp",
@@ -112,9 +115,9 @@ export async function sendMediaHandler(
       }
     }
 
-    return res.status(200).json({ success: true, results });
+    return { success: true, results };
   } catch (err) {
     console.error("Erro geral na função sendMediaHandler:", err);
-    return res.status(200).json({ success: false, error: err.message });
+    return { success: false, error: err.message };
   }
 }

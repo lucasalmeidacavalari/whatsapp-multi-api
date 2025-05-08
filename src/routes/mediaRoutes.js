@@ -20,21 +20,22 @@ router.post(
     }
 
     try {
-      const result = await sendMediaHandler(
-        {
-          sessionName,
-          to,
-          caption,
-          buffer: req.file.buffer,
-          originalName: req.file.originalname,
-        },
-        res
-      );
+      const result = await sendMediaHandler({
+        sessionName,
+        to,
+        caption,
+        buffer: req.file.buffer,
+        originalName: req.file.originalname,
+      });
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
 
       return res.json(result);
     } catch (err) {
       console.error("Erro ao enviar mídia:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Erro interno ao enviar mídia" });
     }
   }
 );

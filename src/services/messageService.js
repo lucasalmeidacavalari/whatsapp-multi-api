@@ -6,24 +6,24 @@ import { withTimeout } from "../utils/withTimeout.js";
 
 const prisma = new PrismaClient();
 
-// Agora a função aceita os dados desestruturados diretamente
-export async function sendTextMessageHandler(
-  { sessionName, to, message: messageText },
-  res
-) {
+export async function sendTextMessageHandler({
+  sessionName,
+  to,
+  message: messageText,
+}) {
   try {
     const session = await prisma.tsession.findFirst({ where: { sessionName } });
     if (!session || !session.isConnected) {
-      return res.status(200).json({
+      return {
         success: false,
         error: "Sessão não encontrada ou desconectada",
-      });
+      };
     }
 
     const sessionDir = session.sessionPath;
     await fs.access(sessionDir);
 
-    const sock = await getOrCreateSession(sessionName, sessionDir, res);
+    const sock = await getOrCreateSession(sessionName, sessionDir);
     await new Promise((res) => setTimeout(res, 2000));
 
     const numbers = Array.isArray(to) ? to : [to];
@@ -100,9 +100,9 @@ export async function sendTextMessageHandler(
       }
     }
 
-    return res.status(200).json({ success: true, results });
+    return { success: true, results };
   } catch (err) {
     console.error("Erro geral na função sendTextMessageHandler:", err);
-    return res.status(200).json({ success: false, error: err.message });
+    return { success: false, error: err.message };
   }
 }

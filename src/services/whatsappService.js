@@ -14,9 +14,7 @@ export async function connectSession({ cpfcnpj, nome }) {
     let empresa = await prisma.tempresa.findUnique({ where: { cpfcnpj } });
 
     if (!empresa) {
-      empresa = await prisma.tempresa.create({
-        data: { cpfcnpj },
-      });
+      empresa = await prisma.tempresa.create({ data: { cpfcnpj } });
     }
 
     const sessionName = uuidv4();
@@ -24,104 +22,103 @@ export async function connectSession({ cpfcnpj, nome }) {
     await fs.mkdir(sessionDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-    const sock = makeWASocket({
-      auth: state,
-      printQRInTerminal: false,
-    });
+    const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Timeout ao conectar")),
+        30000
+      );
+
       sock.ev.on("connection.update", async (update) => {
-        const { connection, qr, lastDisconnect } = update;
+        try {
+          const { connection, qr, lastDisconnect } = update;
 
-        if (qr) {
-          const qrBase64 = await qrcode.toDataURL(qr);
-          return resolve({
-            sessionName,
-            qr,
-            qrBase64,
-            status: "qr_generated",
-          });
-        }
-
-        if (connection === "open") {
-          const numero = sock.user.id.split(":")[0];
-
-          const exists = await prisma.tsession.findFirst({
-            where: {
-              empresaId: empresa.id,
-              numero,
-            },
-          });
-
-          if (!exists) {
-            await prisma.tsession.create({
-              data: {
-                empresaId: empresa.id,
-                sessionName,
-                numero,
-                sessionPath: sessionDir,
-                nomeCelular: nome,
-                isConnected: true,
-              },
+          if (qr) {
+            const qrBase64 = await qrcode.toDataURL(qr);
+            clearTimeout(timeout);
+            return resolve({
+              sessionName,
+              qr,
+              qrBase64,
+              status: "qr_generated",
             });
-            console.log(
-              `Sessão ${sessionName} conectada com o número ${numero}`
-            );
-          } else {
-            console.log(
-              `Sessão ${sessionName} já cadastrada para o número ${exists.numero}`
-            );
-          }
-        }
-
-        if (connection === "close") {
-          const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-          console.log("Conexão encerrada. Motivo:", reason);
-
-          if (reason === 515) {
-            console.log("Erro 515: iniciando loop de reconexão...");
-            setTimeout(() => {
-              iniciarSocket({
-                sessionDir,
-                sessionName,
-                empresaId: empresa.id,
-                nomeCelular: nome,
-              });
-            }, 10000);
           }
 
-          if (reason === 401) {
-            console.log(
-              `Sessão ${sessionDir} desconectada devido à falha de autenticação (provavelmente celular desconectado)!`
-            );
+          if (connection === "open") {
+            clearTimeout(timeout);
+            const numero = sock.user.id.split(":")[0];
 
-            // Precisamos obter o `empresaId` para excluir a sessão
-            const session = await prisma.tsession.findFirst({
-              where: { sessionName: sessionId },
-              select: { empresaId: true, sessionPath: true }, // Pegamos o `empresaId` e `sessionPath` associados à sessão
+            const exists = await prisma.tsession.findFirst({
+              where: { empresaId: empresa.id, numero },
             });
 
-            if (session) {
-              // Agora podemos deletar a sessão usando `empresaId` e `sessionName`
-              await prisma.tsession.delete({
-                where: {
-                  empresaId_sessionName: {
-                    empresaId: session.empresaId,
-                    sessionName: sessionId,
-                  },
+            if (!exists) {
+              await prisma.tsession.create({
+                data: {
+                  empresaId: empresa.id,
+                  sessionName,
+                  numero,
+                  sessionPath: sessionDir,
+                  nomeCelular: nome,
+                  isConnected: true,
                 },
               });
-
-              // Remover a pasta da sessão local
-              await fs.rm(session.sessionPath, {
-                recursive: true,
-                force: true,
-              });
-              console.log(`Pasta da sessão ${sessionId} removida!`);
+              console.log(
+                `Sessão ${sessionName} conectada com o número ${numero}`
+              );
             } else {
-              console.log("Sessão não encontrada");
+              console.log(
+                `Sessão ${sessionName} já cadastrada para o número ${exists.numero}`
+              );
             }
           }
+
+          if (connection === "close") {
+            clearTimeout(timeout);
+            const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            console.log("Conexão encerrada. Motivo:", reason);
+
+            if (reason === 515) {
+              console.log("Erro 515: iniciando loop de reconexão...");
+              setTimeout(() => {
+                iniciarSocket({
+                  sessionDir,
+                  sessionName,
+                  empresaId: empresa.id,
+                  nomeCelular: nome,
+                });
+              }, 10000);
+            }
+
+            if (reason === 401) {
+              const session = await prisma.tsession.findFirst({
+                where: { sessionName },
+                select: { empresaId: true, sessionPath: true },
+              });
+
+              if (session) {
+                await prisma.tsession.delete({
+                  where: {
+                    empresaId_sessionName: {
+                      empresaId: session.empresaId,
+                      sessionName,
+                    },
+                  },
+                });
+                await fs.rm(session.sessionPath, {
+                  recursive: true,
+                  force: true,
+                });
+                console.log(`Pasta da sessão ${sessionName} removida!`);
+              } else {
+                console.log("Sessão não encontrada");
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Erro dentro de connection.update:", err);
+          reject(err);
         }
       });
 
@@ -140,92 +137,73 @@ async function iniciarSocket({
   nomeCelular = "Desconhecido",
 }) {
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-  });
+  const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
   sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
+    try {
+      const { connection, lastDisconnect } = update;
 
-    if (connection === "open") {
-      const numero = sock.user.id.split(":")[0];
+      if (connection === "open") {
+        const numero = sock.user.id.split(":")[0];
 
-      const exists = await prisma.tsession.findFirst({
-        where: {
-          empresaId,
-          numero,
-        },
-      });
-
-      if (!exists) {
-        await prisma.tsession.create({
-          data: {
-            empresaId,
-            sessionName,
-            numero,
-            sessionPath: sessionDir,
-            nomeCelular,
-            isConnected: true,
-          },
+        const exists = await prisma.tsession.findFirst({
+          where: { empresaId, numero },
         });
 
-        console.log(`Sessão ${sessionName} conectada com o número ${numero}`);
-      } else {
-        console.log(
-          `Sessão ${sessionName} já cadastrada para número ${exists.numero}`
-        );
-      }
-    }
-
-    if (connection === "close") {
-      const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      console.log("Conexão encerrada. Motivo:", reason);
-
-      if (reason === 515) {
-        console.log("Erro 515: tentando reconectar com delay...");
-        setTimeout(() => {
-          iniciarSocket({
-            sessionDir,
-            sessionName,
-            empresaId: empresa.id,
-            nomeCelular: nome,
-          });
-        }, 10000);
-      }
-
-      if (reason === 401) {
-        console.log(
-          `Sessão ${sessionDir} desconectada devido à falha de autenticação (provavelmente celular desconectado)!`
-        );
-
-        // Precisamos obter o `empresaId` para excluir a sessão
-        const session = await prisma.tsession.findFirst({
-          where: { sessionName: sessionName },
-          select: { empresaId: true, sessionPath: true }, // Pegamos o `empresaId` e `sessionPath` associados à sessão
-        });
-
-        if (session) {
-          // Agora podemos deletar a sessão usando `empresaId` e `sessionName`
-          await prisma.tsession.delete({
-            where: {
-              empresaId_sessionName: {
-                empresaId: session.empresaId,
-                sessionName: sessionName,
-              },
+        if (!exists) {
+          await prisma.tsession.create({
+            data: {
+              empresaId,
+              sessionName,
+              numero,
+              sessionPath: sessionDir,
+              nomeCelular,
+              isConnected: true,
             },
           });
-
-          // Remover a pasta da sessão local
-          await fs.rm(session.sessionPath, {
-            recursive: true,
-            force: true,
-          });
-          console.log(`Pasta da sessão ${sessionName} removida!`);
+          console.log(`Sessão ${sessionName} conectada com o número ${numero}`);
         } else {
-          console.log("Sessão não encontrada");
+          console.log(
+            `Sessão ${sessionName} já cadastrada para número ${exists.numero}`
+          );
         }
       }
+
+      if (connection === "close") {
+        const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+        console.log("Conexão encerrada. Motivo:", reason);
+
+        if (reason === 515) {
+          console.log("Erro 515: tentando reconectar com delay...");
+          setTimeout(() => {
+            iniciarSocket({ sessionDir, sessionName, empresaId, nomeCelular });
+          }, 10000);
+        }
+
+        if (reason === 401) {
+          const session = await prisma.tsession.findFirst({
+            where: { sessionName },
+            select: { empresaId: true, sessionPath: true },
+          });
+
+          if (session) {
+            await prisma.tsession.delete({
+              where: {
+                empresaId_sessionName: {
+                  empresaId: session.empresaId,
+                  sessionName,
+                },
+              },
+            });
+            await fs.rm(session.sessionPath, { recursive: true, force: true });
+            console.log(`Pasta da sessão ${sessionName} removida!`);
+          } else {
+            console.log("Sessão não encontrada");
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Erro interno no iniciarSocket:", err);
     }
   });
 

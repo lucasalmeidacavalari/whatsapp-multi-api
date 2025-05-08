@@ -14,14 +14,16 @@ router.post("/send-text", authMiddleware, async (req, res) => {
   }
 
   try {
-    const result = await sendTextMessageHandler(
-      { sessionName, to, message },
-      res
-    );
+    const result = await sendTextMessageHandler({ sessionName, to, message });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
     return res.json(result);
   } catch (err) {
     console.error("Erro ao enviar mensagem:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Erro interno ao enviar mensagem" });
   }
 });
 

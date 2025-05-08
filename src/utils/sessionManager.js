@@ -6,7 +6,7 @@ import { PrismaClient } from "@prisma/client";
 const sessions = new Map();
 const prisma = new PrismaClient();
 
-export async function getOrCreateSession(sessionName, sessionPath, res = null) {
+export async function getOrCreateSession(sessionName, sessionPath) {
   const existing = sessions.get(sessionName);
 
   if (existing) {
@@ -16,37 +16,29 @@ export async function getOrCreateSession(sessionName, sessionPath, res = null) {
 
   const absoluteSessionPath = path.isAbsolute(sessionPath)
     ? sessionPath
-    : path.resolve(process.cwd(), sessionPath); // Garante que o caminho seja absoluto
+    : path.resolve(process.cwd(), sessionPath);
 
   const { state, saveCreds } = await useMultiFileAuthState(absoluteSessionPath);
   const sock = makeWASocket({ auth: state });
 
-  // Passando o sessionName para o sock diretamente
   sock.sessionName = sessionName;
 
-  // Monitorando a atualização da conexão
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
-    const sessionId = sock.sessionName; // Usando sessionName diretamente de sock
+    const sessionId = sock.sessionName;
 
-    // Quando a conexão for fechada
     if (connection === "close") {
       console.log(`Sessão ${sessionId} desconectada!`);
 
-      // Verifica se a desconexão foi devido à desconexão do celular
       if (lastDisconnect?.error?.output?.statusCode === 401) {
-        console.log(
-          `Sessão ${sessionId} desconectada devido à falha de autenticação (provavelmente celular desconectado)!`
-        );
+        console.log(`Desconexão por falha de autenticação.`);
 
-        // Precisamos obter o `empresaId` para excluir a sessão
         const session = await prisma.tsession.findFirst({
           where: { sessionName: sessionId },
-          select: { empresaId: true, sessionPath: true }, // Pegamos o `empresaId` e `sessionPath` associados à sessão
+          select: { empresaId: true, sessionPath: true },
         });
 
         if (session) {
-          // Agora podemos deletar a sessão usando `empresaId` e `sessionName`
           await prisma.tsession.delete({
             where: {
               empresaId_sessionName: {
@@ -56,30 +48,11 @@ export async function getOrCreateSession(sessionName, sessionPath, res = null) {
             },
           });
 
-          // Remover a pasta da sessão local
           await fs.rm(session.sessionPath, { recursive: true, force: true });
-          console.log(`Pasta da sessão ${sessionId} removida!`);
-
-          // Remover do cache também
           sessions.delete(sessionId);
-
-          // Enviar resposta de sucesso para o Postman, se res estiver disponível
-          if (res) {
-            return res
-              .status(200)
-              .json({
-                message: `Sessão ${sessionId} desconectada devido à falha de autenticação (provavelmente celular desconectado)!`,
-              });
-          } else {
-            console.log("Sessão desconectada e apagada com sucesso");
-          }
+          console.log(`Sessão ${sessionId} removida com sucesso.`);
         } else {
-          console.log("Sessão não encontrada");
-
-          // Enviar erro se res estiver disponível
-          if (res) {
-            return res.status(404).json({ error: "Sessão não encontrada" });
-          }
+          console.log(`Sessão ${sessionId} não encontrada no banco.`);
         }
       }
     }
@@ -87,10 +60,8 @@ export async function getOrCreateSession(sessionName, sessionPath, res = null) {
 
   sock.ev.on("creds.update", saveCreds);
 
-  // Aguarda até que a conexão seja aberta
   await waitForConnectionOpen(sock);
 
-  // Armazena a sessão no cache local
   sessions.set(sessionName, { sock, lastUsed: Date.now() });
 
   return sock;
