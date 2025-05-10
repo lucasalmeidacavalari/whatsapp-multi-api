@@ -1,5 +1,5 @@
 import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys";
-import { Boom } from "@hapi/boom";
+import { Boom, isBoom } from "@hapi/boom";
 import { v4 as uuidv4 } from "uuid";
 import qrcode from "qrcode";
 import fs from "fs/promises";
@@ -76,11 +76,34 @@ export async function connectSession({ cpfcnpj, nome }) {
 
           if (connection === "close") {
             clearTimeout(timeout);
-            const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-            console.log("Conexão encerrada. Motivo:", reason);
 
-            if (reason === 515) {
-              console.log("Erro 515: iniciando loop de reconexão...");
+            const reasonCode = new Boom(lastDisconnect?.error)?.output
+              ?.statusCode;
+            const reasonText = isBoom(lastDisconnect?.error)
+              ? lastDisconnect.error.message
+              : "Desconhecido";
+
+            console.log(
+              `Conexão encerrada. Motivo: ${reasonCode} - ${reasonText}`
+            );
+
+            if (reasonCode === 408) {
+              console.warn(
+                "Timeout detectado (408). Removendo pasta da sessão..."
+              );
+
+              try {
+                await fs.rm(sessionDir, { recursive: true, force: true });
+                console.log(`✅ Pasta da sessão ${sessionName} removida.`);
+              } catch (err) {
+                console.error("Erro ao remover pasta da sessão:", err);
+              }
+
+              return;
+            }
+
+            if (reasonCode === 515) {
+              console.log("Erro 515: tentando reconectar...");
               setTimeout(() => {
                 iniciarSocket({
                   sessionDir,
@@ -89,30 +112,35 @@ export async function connectSession({ cpfcnpj, nome }) {
                   nomeCelular: nome,
                 });
               }, 10000);
+              return;
             }
 
-            if (reason === 401) {
-              const session = await prisma.tsession.findFirst({
-                where: { sessionName },
-                select: { empresaId: true, sessionPath: true },
-              });
+            if (reasonCode === 401) {
+              try {
+                const session = await prisma.tsession.findFirst({
+                  where: { sessionName },
+                  select: { empresaId: true, sessionPath: true },
+                });
 
-              if (session) {
-                await prisma.tsession.delete({
-                  where: {
-                    empresaId_sessionName: {
-                      empresaId: session.empresaId,
-                      sessionName,
+                if (session) {
+                  await prisma.tsession.delete({
+                    where: {
+                      empresaId_sessionName: {
+                        empresaId: session.empresaId,
+                        sessionName,
+                      },
                     },
-                  },
-                });
-                await fs.rm(session.sessionPath, {
-                  recursive: true,
-                  force: true,
-                });
-                console.log(`Pasta da sessão ${sessionName} removida!`);
-              } else {
-                console.log("Sessão não encontrada");
+                  });
+                  await fs.rm(session.sessionPath, {
+                    recursive: true,
+                    force: true,
+                  });
+                  console.log(`Pasta da sessão ${sessionName} removida!`);
+                } else {
+                  console.log("Sessão não encontrada");
+                }
+              } catch (err) {
+                console.error("Erro ao remover sessão:", err);
               }
             }
           }
