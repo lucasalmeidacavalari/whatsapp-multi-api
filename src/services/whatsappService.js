@@ -5,6 +5,7 @@ import qrcode from "qrcode";
 import fs from "fs/promises";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
+import { sessions } from "../utils/sessionManager.js";
 
 const prisma = new PrismaClient();
 const sessionsPath = path.resolve("sessions");
@@ -188,6 +189,7 @@ async function iniciarSocket({
             console.log(
               `Sessão ${sessionName} conectada com o número ${numero}`
             );
+            sessions.set(sessionName, { sock, lastUsed: Date.now() });
           } else {
             console.log(
               `Sessão ${sessionName} já cadastrada para número ${exists.numero}`
@@ -235,6 +237,7 @@ async function iniciarSocket({
               console.log("Sessão não encontrada");
             }
           }
+          sessions.delete(sessionName);
         }
       } catch (err) {
         console.error("Erro interno no iniciarSocket:", err);
