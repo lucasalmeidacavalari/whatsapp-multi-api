@@ -8,6 +8,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum SessaoStatus {
+  ATIVA
+  INATIVA
+  EXPIRADA
+  ERRO
+}
+
 model tempresa {
   id        String     @id @default(uuid())
   cpfcnpj   String     @unique
@@ -18,16 +25,18 @@ model tempresa {
 }
 
 model tsession {
-  id           String    @id @default(uuid())
-  empresa      tempresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  id           String       @id @default(uuid())
+  empresa      tempresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   empresaId    String
   sessionName  String
   numero       String
   sessionPath  String
-  nomeCelular  String?   // Novo campo adicionado aqui
-  isConnected  Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  nomeCelular  String?
+  isConnected  Boolean      @default(false)
+  status       SessaoStatus @default(INATIVA)
+  ultimoUso    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@unique([empresaId, numero])
   @@unique([empresaId, sessionName])

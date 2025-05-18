@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 import { useMultiFileAuthState, makeWASocket } from "@whiskeysockets/baileys";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, SessaoStatus } from "@prisma/client";
+import { Boom } from "@hapi/boom";
 
 export const sessions = new Map();
 const prisma = new PrismaClient();
@@ -20,40 +21,48 @@ export async function getOrCreateSession(sessionName, sessionPath) {
 
   const { state, saveCreds } = await useMultiFileAuthState(absoluteSessionPath);
   const sock = makeWASocket({ auth: state });
-
   sock.sessionName = sessionName;
 
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
     const sessionId = sock.sessionName;
 
+    if (connection === "open") {
+      console.log(`✅ Sessão ${sessionId} conectada`);
+      await prisma.tsession.updateMany({
+        where: { sessionName: sessionId },
+        data: {
+          status: "ATIVA",
+          isConnected: true,
+          ultimoUso: new Date(),
+        },
+      });
+    }
+
     if (connection === "close") {
-      console.log(`Sessão ${sessionId} desconectada!`);
+      const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      console.log(`⚠️ Sessão ${sessionId} desconectada! Código: ${reason}`);
 
-      if (lastDisconnect?.error?.output?.statusCode === 401) {
-        console.log(`Desconexão por falha de autenticação.`);
+      let status = SessaoStatus.ERRO;
+      if (reason === 401) status = "EXPIRADA";
+      else if (reason === 408) status = "INATIVA";
 
-        const session = await prisma.tsession.findFirst({
-          where: { sessionName: sessionId },
-          select: { empresaId: true, sessionPath: true },
-        });
+      await prisma.tsession.updateMany({
+        where: { sessionName: sessionId },
+        data: {
+          status,
+          isConnected: false,
+          ultimoUso: new Date(),
+        },
+      });
 
-        if (session) {
-          await prisma.tsession.delete({
-            where: {
-              empresaId_sessionName: {
-                empresaId: session.empresaId,
-                sessionName: sessionId,
-              },
-            },
-          });
+      sessions.delete(sessionId);
 
-          await fs.rm(session.sessionPath, { recursive: true, force: true });
-          sessions.delete(sessionId);
-          console.log(`Sessão ${sessionId} removida com sucesso.`);
-        } else {
-          console.log(`Sessão ${sessionId} não encontrada no banco.`);
-        }
+      if (reason === 515 || reason === 408) {
+        console.log(`🔄 Tentando reconectar sessão ${sessionId}...`);
+        setTimeout(() => {
+          getOrCreateSession(sessionId, sessionPath);
+        }, 10000);
       }
     }
   });
@@ -64,34 +73,18 @@ export async function getOrCreateSession(sessionName, sessionPath) {
     await waitForConnectionOpen(sock);
   } catch (err) {
     console.error(
-      `Erro ao abrir conexão para a sessão ${sessionName}:`,
+      `❌ Erro ao abrir conexão para a sessão ${sessionName}:`,
       err.message
     );
 
-    try {
-      const session = await prisma.tsession.findFirst({
-        where: { sessionName },
-        select: { empresaId: true, sessionPath: true },
-      });
-
-      if (session) {
-        await prisma.tsession.delete({
-          where: {
-            empresaId_sessionName: {
-              empresaId: session.empresaId,
-              sessionName: sessionName,
-            },
-          },
-        });
-
-        await fs.rm(session.sessionPath, { recursive: true, force: true });
-        console.log(
-          `Sessão ${sessionName} inválida removida do banco e sistema.`
-        );
-      }
-    } catch (e) {
-      console.warn("Erro ao limpar sessão inválida do banco:", e.message);
-    }
+    await prisma.tsession.updateMany({
+      where: { sessionName },
+      data: {
+        status: "ERRO",
+        isConnected: false,
+        ultimoUso: new Date(),
+      },
+    });
 
     sessions.delete(sessionName);
     return null;
@@ -125,16 +118,27 @@ export function waitForConnectionOpen(sock, timeoutMs = 15000) {
   });
 }
 
-// 🧹 Cleanup automático a cada 1 minuto
+// 🧹 Cleanup automático a cada 10 minuto
 setInterval(() => {
   const now = Date.now();
-  const TIMEOUT = 1 * 60 * 1000; // 1 minuto
+  const TIMEOUT = 10 * 60 * 1000; // 10 minutos
 
   for (const [sessionName, { sock, lastUsed }] of sessions.entries()) {
     if (now - lastUsed > TIMEOUT) {
       console.log(`🧹 Encerrando sessão inativa: ${sessionName}`);
       sock.end();
       sessions.delete(sessionName);
+
+      prisma.tsession
+        .updateMany({
+          where: { sessionName },
+          data: {
+            isConnected: false,
+            status: "INATIVA",
+            ultimoUso: new Date(),
+          },
+        })
+        .catch(console.error);
     }
   }
 }, 60 * 1000);
