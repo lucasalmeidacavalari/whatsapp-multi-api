@@ -8,13 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum SessaoStatus {
-  ATIVA
-  INATIVA
-  EXPIRADA
-  ERRO
-}
-
 model tempresa {
   id        String     @id @default(uuid())
   cpfcnpj   String     @unique
@@ -25,19 +18,38 @@ model tempresa {
 }
 
 model tsession {
-  id           String       @id @default(uuid())
-  empresa      tempresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  id           String         @id @default(uuid())
+  empresa      tempresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   empresaId    String
   sessionName  String
   numero       String
   sessionPath  String
   nomeCelular  String?
-  isConnected  Boolean      @default(false)
-  status       SessaoStatus @default(INATIVA)
+  isConnected  Boolean        @default(false)
+  status       SessaoStatus   @default(INATIVA)
   ultimoUso    DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  logs         tsessionlog[]  // 👈 ADICIONE ESTA LINHA
 
   @@unique([empresaId, numero])
   @@unique([empresaId, sessionName])
+}
+
+model tsessionlog {
+  id          String     @id @default(uuid())
+  session     tsession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId   String
+  message     String
+  createdAt   DateTime   @default(now())
+
+  @@index([sessionId])
+}
+
+enum SessaoStatus {
+  ATIVA
+  INATIVA
+  EXPIRADA
+  ERRO
 }
