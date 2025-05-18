@@ -129,7 +129,7 @@ export function waitForConnectionOpen(sock, timeoutMs = 15000) {
 // 🧹 Cleanup automático a cada 10 minuto
 setInterval(() => {
   const now = Date.now();
-  const TIMEOUT = 1 * 60 * 1000; // 10 minutos
+  const TIMEOUT = 10 * 60 * 1000; // 10 minutos
 
   for (const [sessionName, { sock, lastUsed }] of sessions.entries()) {
     if (now - lastUsed > TIMEOUT) {
