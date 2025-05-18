@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/whatsapp
     volumes:
       - ./sessions:/app/sessions
-    command: sh -c "npx prisma migrate dev && npm run dev"
+    command: sh -c "npx prisma migrate deploy && npm run dev"
 
 volumes:
   pgdata:
