@@ -9,32 +9,74 @@ import { sessions } from "../utils/sessionManager.js";
 
 const prisma = new PrismaClient();
 const sessionsPath = path.resolve("sessions");
+const encerradasManual = new Set();
 
 export async function connectSession({ cpfcnpj, nome }) {
   try {
     let empresa = await prisma.tempresa.findUnique({ where: { cpfcnpj } });
-    if (!empresa) empresa = await prisma.tempresa.create({ data: { cpfcnpj } });
+    if (!empresa) {
+      empresa = await prisma.tempresa.create({ data: { cpfcnpj } });
+    }
 
-    // Tenta reutilizar sessão existente
-    let sessao = await prisma.tsession.findFirst({
+    let sessaoExistente = await prisma.tsession.findFirst({
       where: {
         empresaId: empresa.id,
-        status: { in: ["INATIVA", "ATIVA"] },
+        status: { in: ["INATIVA", "EXPIRADA", "ERRO", "ATIVA"] },
       },
     });
 
-    const sessionName = sessao?.sessionName ?? uuidv4();
-    const sessionDir = path.join(sessionsPath, sessionName);
-    await fs.mkdir(sessionDir, { recursive: true });
+    let sessionName;
+    let sessionDir;
+    let reuse = false;
+
+    if (sessaoExistente) {
+      const pathExists = await fs
+        .access(sessaoExistente.sessionPath)
+        .then(() => true)
+        .catch(() => false);
+
+      if (
+        pathExists &&
+        sessaoExistente.status !== "EXPIRADA" &&
+        sessaoExistente.status !== "ERRO"
+      ) {
+        sessionName = sessaoExistente.sessionName;
+        sessionDir = sessaoExistente.sessionPath;
+        reuse = true;
+      } else {
+        try {
+          await fs.rm(sessaoExistente.sessionPath, {
+            recursive: true,
+            force: true,
+          });
+          console.log(
+            `🧹 Pasta da sessão ${sessaoExistente.sessionName} removida para regeneração.`
+          );
+        } catch (err) {
+          console.warn("⚠️ Erro ao limpar sessão antiga:", err.message);
+        }
+
+        sessionName = sessaoExistente.sessionName;
+        sessionDir = path.join(sessionsPath, sessionName);
+        await fs.mkdir(sessionDir, { recursive: true });
+        reuse = false;
+      }
+    }
+
+    if (!sessionName) {
+      sessionName = uuidv4();
+      sessionDir = path.join(sessionsPath, sessionName);
+      await fs.mkdir(sessionDir, { recursive: true });
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        console.warn("Timeout ao conectar sessão");
+        console.warn("⏱ Timeout ao conectar sessão");
         return resolve({ status: "timeout", sessionName });
-      }, 30000);
+      }, 60000);
 
       sock.ev.on("connection.update", async (update) => {
         try {
@@ -45,6 +87,7 @@ export async function connectSession({ cpfcnpj, nome }) {
             clearTimeout(timeout);
             return resolve({
               sessionName,
+              reuse,
               qr,
               qrBase64,
               status: "qr_generated",
@@ -83,12 +126,15 @@ export async function connectSession({ cpfcnpj, nome }) {
 
             sessions.set(sessionName, { sock, lastUsed: Date.now() });
 
-            console.log(
-              `✅ Sessão ${sessionName} conectada com o número ${numero}`
-            );
+            return resolve({
+              sessionName,
+              reuse,
+              numero,
+              status: "connected",
+            });
           }
 
-          if (connection === "close") {
+          if (connection === "close" && !qr) {
             clearTimeout(timeout);
             const reasonCode = new Boom(lastDisconnect?.error)?.output
               ?.statusCode;
@@ -97,26 +143,13 @@ export async function connectSession({ cpfcnpj, nome }) {
               : "Desconhecido";
 
             console.log(
-              `⚠️ Conexão encerrada. Motivo: ${reasonCode} - ${reasonText}`
+              `⚠️ Sessão ${sessionName} desconectada (close). Código: ${reasonCode} - ${reasonText}`
             );
 
-            let status = SessaoStatus.ERRO;
-            if (reasonCode === 408) status = "INATIVA";
-            if (reasonCode === 401) status = "EXPIRADA";
-
-            await prisma.tsession.updateMany({
-              where: { sessionName },
-              data: {
-                isConnected: false,
-                status,
-                ultimoUso: new Date(),
-              },
-            });
-
-            sessions.delete(sessionName);
-
             if (reasonCode === 515 || reasonCode === 408) {
-              console.log("Tentando reconectar...");
+              console.log(
+                "🔁 Reconectando sessão com iniciarSocket após erro 515/408..."
+              );
               setTimeout(() => {
                 iniciarSocket({
                   sessionDir,
@@ -125,17 +158,38 @@ export async function connectSession({ cpfcnpj, nome }) {
                   nomeCelular: nome,
                 });
               }, 10000);
+
+              return resolve({
+                sessionName,
+                reuse,
+                status: "reconnect_pending",
+                motivo: `Erro ${reasonCode}: Reconexão iniciada com delay.`,
+              });
             }
+
+            return resolve({
+              sessionName,
+              reuse,
+              status: "disconnected",
+              motivo: reasonText,
+            });
           }
         } catch (err) {
-          console.error("Erro dentro de connection.update:", err);
+          clearTimeout(timeout);
+          console.error("❌ Erro interno em connection.update:", err);
+          return resolve({
+            sessionName,
+            reuse,
+            status: "erro",
+            detalhe: err.message,
+          });
         }
       });
 
       sock.ev.on("creds.update", saveCreds);
     });
   } catch (error) {
-    console.error("Erro geral no connectSession:", error);
+    console.error("❌ Erro geral no connectSession:", error);
     return {
       status: "erro",
       mensagem: "Falha ao inicializar sessão",
@@ -155,6 +209,13 @@ async function iniciarSocket({
     const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
     sock.ev.on("connection.update", async (update) => {
+      if (encerradasManual.has(sessionName)) {
+        encerradasManual.delete(sessionName);
+        console.log(
+          `🟢 Sessão ${sessionName} encerrada manualmente (status já atualizado).`
+        );
+        return;
+      }
       try {
         const { connection, lastDisconnect } = update;
 

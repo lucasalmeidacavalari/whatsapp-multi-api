@@ -2,6 +2,7 @@ import { useMultiFileAuthState, makeWASocket } from "@whiskeysockets/baileys";
 import path from "path";
 import fs from "fs/promises";
 import { PrismaClient } from "@prisma/client";
+import { logSessao } from "../utils/logService.js";
 
 const prisma = new PrismaClient();
 const sessionsPath = path.resolve("sessions");
@@ -30,51 +31,32 @@ export async function logoutSession(sessionName) {
 
     await new Promise((resolve) => {
       sock.ev.on("connection.update", (update) => {
-        try {
-          const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect } = update;
 
-          if (connection === "open") {
-            sock.logout();
-            resolve();
-          } else if (connection === "close" || lastDisconnect) {
-            console.log(
-              `Sessão ${sessionName} já desconectada, realizando logout.`
-            );
-            resolve();
-          } else if (lastDisconnect?.error?.output?.statusCode === 401) {
-            console.log(
-              `Sessão ${sessionName} desconectada por falha de autenticação.`
-            );
-            sock.logout();
-            resolve();
-          }
-        } catch (err) {
-          console.error("Erro ao atualizar conexão durante logout:", err);
+        if (connection === "open") {
+          sock.logout();
+          resolve();
+        } else if (connection === "close" || lastDisconnect) {
+          resolve();
+        } else if (lastDisconnect?.error?.output?.statusCode === 401) {
+          sock.logout();
           resolve();
         }
       });
     });
 
-    try {
-      const existingSession = await prisma.tsession.findFirst({
-        where: { sessionName },
-      });
-      if (existingSession) {
-        await prisma.tsession.delete({ where: { id: existingSession.id } });
-        console.log(`Sessão ${sessionName} removida do banco.`);
-      } else {
-        console.log(`Sessão ${sessionName} já foi removida do banco.`);
-      }
-    } catch (err) {
-      console.error("Erro ao remover sessão do banco:", err);
-    }
+    // Atualiza o status da sessão no banco
+    await prisma.tsession.updateMany({
+      where: { sessionName },
+      data: {
+        isConnected: false,
+        status: "EXPIRADA",
+        ultimoUso: new Date(),
+      },
+    });
 
-    try {
-      await fs.rm(sessionDir, { recursive: true, force: true });
-      console.log(`Pasta da sessão ${sessionName} removida!`);
-    } catch (err) {
-      console.error("Erro ao remover arquivos da sessão:", err);
-    }
+    // Registra log de logout
+    await logSessao(session.id, "🔒 Sessão encerrada manualmente via logout.");
 
     return { success: true, sessionName };
   } catch (error) {

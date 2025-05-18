@@ -6,6 +6,7 @@ import { Boom } from "@hapi/boom";
 
 export const sessions = new Map();
 const prisma = new PrismaClient();
+const encerradasManual = new Set();
 
 export async function getOrCreateSession(sessionName, sessionPath) {
   const existing = sessions.get(sessionName);
@@ -40,6 +41,13 @@ export async function getOrCreateSession(sessionName, sessionPath) {
     }
 
     if (connection === "close") {
+      if (encerradasManual.has(sessionId)) {
+        encerradasManual.delete(sessionId);
+        console.log(
+          `🟢 Sessão ${sessionId} encerrada manualmente (status já atualizado).`
+        );
+        return;
+      }
       const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
       console.log(`⚠️ Sessão ${sessionId} desconectada! Código: ${reason}`);
 
@@ -121,24 +129,27 @@ export function waitForConnectionOpen(sock, timeoutMs = 15000) {
 // 🧹 Cleanup automático a cada 10 minuto
 setInterval(() => {
   const now = Date.now();
-  const TIMEOUT = 10 * 60 * 1000; // 10 minutos
+  const TIMEOUT = 1 * 60 * 1000; // 10 minutos
 
   for (const [sessionName, { sock, lastUsed }] of sessions.entries()) {
     if (now - lastUsed > TIMEOUT) {
       console.log(`🧹 Encerrando sessão inativa: ${sessionName}`);
-      sock.end();
-      sessions.delete(sessionName);
+
+      encerradasManual.add(sessionName); // ← marca como encerrada manualmente
 
       prisma.tsession
         .updateMany({
           where: { sessionName },
           data: {
-            isConnected: false,
             status: "INATIVA",
+            isConnected: false,
             ultimoUso: new Date(),
           },
         })
         .catch(console.error);
+
+      sock.end();
+      sessions.delete(sessionName);
     }
   }
 }, 60 * 1000);

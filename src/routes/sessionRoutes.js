@@ -44,11 +44,23 @@ router.get("/session-status/:cpfcnpj", authMiddleware, async (req, res) => {
                 }
               : undefined,
           select: {
+            id: true,
             sessionName: true,
             numero: true,
-            isConnected: true,
-            createdAt: true,
             nomeCelular: true,
+            isConnected: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+            ultimoUso: true,
+            logs: {
+              orderBy: { createdAt: "desc" },
+              take: 5,
+              select: {
+                message: true,
+                createdAt: true,
+              },
+            },
           },
         },
       },
