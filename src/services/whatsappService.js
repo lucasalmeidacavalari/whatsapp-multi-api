@@ -18,56 +18,9 @@ export async function connectSession({ cpfcnpj, nome }) {
       empresa = await prisma.tempresa.create({ data: { cpfcnpj } });
     }
 
-    let sessaoExistente = await prisma.tsession.findFirst({
-      where: {
-        empresaId: empresa.id,
-        status: { in: ["INATIVA", "EXPIRADA", "ERRO", "ATIVA"] },
-      },
-    });
-
-    let sessionName;
-    let sessionDir;
-    let reuse = false;
-
-    if (sessaoExistente) {
-      const pathExists = await fs
-        .access(sessaoExistente.sessionPath)
-        .then(() => true)
-        .catch(() => false);
-
-      if (
-        pathExists &&
-        sessaoExistente.status !== "EXPIRADA" &&
-        sessaoExistente.status !== "ERRO"
-      ) {
-        sessionName = sessaoExistente.sessionName;
-        sessionDir = sessaoExistente.sessionPath;
-        reuse = true;
-      } else {
-        try {
-          await fs.rm(sessaoExistente.sessionPath, {
-            recursive: true,
-            force: true,
-          });
-          console.log(
-            `🧹 Pasta da sessão ${sessaoExistente.sessionName} removida para regeneração.`
-          );
-        } catch (err) {
-          console.warn("⚠️ Erro ao limpar sessão antiga:", err.message);
-        }
-
-        sessionName = sessaoExistente.sessionName;
-        sessionDir = path.join(sessionsPath, sessionName);
-        await fs.mkdir(sessionDir, { recursive: true });
-        reuse = false;
-      }
-    }
-
-    if (!sessionName) {
-      sessionName = uuidv4();
-      sessionDir = path.join(sessionsPath, sessionName);
-      await fs.mkdir(sessionDir, { recursive: true });
-    }
+    let sessionName = uuidv4();
+    let sessionDir = path.join(sessionsPath, sessionName);
+    await fs.mkdir(sessionDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     const sock = makeWASocket({ auth: state, printQRInTerminal: false });
@@ -87,7 +40,6 @@ export async function connectSession({ cpfcnpj, nome }) {
             clearTimeout(timeout);
             return resolve({
               sessionName,
-              reuse,
               qr,
               qrBase64,
               status: "qr_generated",
@@ -98,40 +50,64 @@ export async function connectSession({ cpfcnpj, nome }) {
             clearTimeout(timeout);
             const numero = sock.user.id.split(":")[0];
 
-            await prisma.tsession.upsert({
+            // Verifica se já existe uma sessão com esse número para essa empresa
+            const sessaoExistente = await prisma.tsession.findFirst({
               where: {
-                empresaId_sessionName: {
+                empresaId: empresa.id,
+                numero,
+              },
+            });
+
+            if (sessaoExistente) {
+              // Reutiliza sessionName e sessionDir antigos
+              sessionName = sessaoExistente.sessionName;
+              sessionDir = sessaoExistente.sessionPath;
+
+              // Atualiza arquivo local com credenciais no diretório antigo
+              await fs.mkdir(sessionDir, { recursive: true });
+
+              sessions.set(sessionName, { sock, lastUsed: Date.now() });
+
+              await prisma.tsession.update({
+                where: { id: sessaoExistente.id },
+                data: {
+                  nomeCelular: nome,
+                  isConnected: true,
+                  status: "ATIVA",
+                  ultimoUso: new Date(),
+                },
+              });
+
+              return resolve({
+                sessionName,
+                reuse: true,
+                numero,
+                status: "connected",
+              });
+            } else {
+              // Nova sessão com esse número
+              await prisma.tsession.create({
+                data: {
                   empresaId: empresa.id,
                   sessionName,
+                  numero,
+                  sessionPath: sessionDir,
+                  nomeCelular: nome,
+                  isConnected: true,
+                  status: "ATIVA",
+                  ultimoUso: new Date(),
                 },
-              },
-              update: {
-                numero,
-                nomeCelular: nome,
-                isConnected: true,
-                status: "ATIVA",
-                ultimoUso: new Date(),
-              },
-              create: {
-                empresaId: empresa.id,
+              });
+
+              sessions.set(sessionName, { sock, lastUsed: Date.now() });
+
+              return resolve({
                 sessionName,
+                reuse: false,
                 numero,
-                sessionPath: sessionDir,
-                nomeCelular: nome,
-                isConnected: true,
-                status: "ATIVA",
-                ultimoUso: new Date(),
-              },
-            });
-
-            sessions.set(sessionName, { sock, lastUsed: Date.now() });
-
-            return resolve({
-              sessionName,
-              reuse,
-              numero,
-              status: "connected",
-            });
+                status: "connected",
+              });
+            }
           }
 
           if (connection === "close" && !qr) {
@@ -161,7 +137,7 @@ export async function connectSession({ cpfcnpj, nome }) {
 
               return resolve({
                 sessionName,
-                reuse,
+                reuse: true,
                 status: "reconnect_pending",
                 motivo: `Erro ${reasonCode}: Reconexão iniciada com delay.`,
               });
@@ -169,7 +145,7 @@ export async function connectSession({ cpfcnpj, nome }) {
 
             return resolve({
               sessionName,
-              reuse,
+              reuse: true,
               status: "disconnected",
               motivo: reasonText,
             });
@@ -179,7 +155,7 @@ export async function connectSession({ cpfcnpj, nome }) {
           console.error("❌ Erro interno em connection.update:", err);
           return resolve({
             sessionName,
-            reuse,
+            reuse: false,
             status: "erro",
             detalhe: err.message,
           });
