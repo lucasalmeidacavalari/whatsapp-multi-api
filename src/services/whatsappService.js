@@ -192,40 +192,56 @@ async function iniciarSocket({
         );
         return;
       }
+
       try {
         const { connection, lastDisconnect } = update;
 
         if (connection === "open") {
           const numero = sock.user.id.split(":")[0];
 
-          await prisma.tsession.upsert({
+          // Verifica se já existe sessão com esse número para essa empresa
+          let sessaoExistente = await prisma.tsession.findFirst({
             where: {
-              empresaId_sessionName: {
-                empresaId,
-                sessionName,
-              },
-            },
-            update: {
-              numero,
-              nomeCelular,
-              isConnected: true,
-              status: "ATIVA",
-              ultimoUso: new Date(),
-            },
-            create: {
               empresaId,
-              sessionName,
               numero,
-              sessionPath: sessionDir,
-              nomeCelular,
-              isConnected: true,
-              status: "ATIVA",
-              ultimoUso: new Date(),
             },
           });
 
-          sessions.set(sessionName, { sock, lastUsed: Date.now() });
+          if (sessaoExistente) {
+            // Reutiliza sessionName e atualiza os dados
+            sessionName = sessaoExistente.sessionName;
+            sessionDir = sessaoExistente.sessionPath;
 
+            await prisma.tsession.update({
+              where: { id: sessaoExistente.id },
+              data: {
+                nomeCelular,
+                isConnected: true,
+                status: "ATIVA",
+                ultimoUso: new Date(),
+              },
+            });
+          } else {
+            // Cria nova sessão
+            sessionName = sessionName || uuidv4();
+            sessionDir = sessionDir || path.join(sessionsPath, sessionName);
+            await fs.mkdir(sessionDir, { recursive: true });
+
+            await prisma.tsession.create({
+              data: {
+                empresaId,
+                sessionName,
+                numero,
+                sessionPath: sessionDir,
+                nomeCelular,
+                isConnected: true,
+                status: "ATIVA",
+                ultimoUso: new Date(),
+              },
+            });
+          }
+
+          sessions.set(sessionName, { sock, lastUsed: Date.now() });
           console.log(
             `✅ Sessão ${sessionName} conectada com o número ${numero}`
           );
