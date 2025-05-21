@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import "./jobs/watchdog.js";
+import "./jobs/logCleaner.js";
 
 // Rotas
 import connectRoutes from "./routes/connectRoutes.js";
