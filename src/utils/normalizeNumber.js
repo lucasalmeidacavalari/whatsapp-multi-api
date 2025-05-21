@@ -41,3 +41,24 @@ export function normalizeNumber(input) {
   // Número inválido
   return null;
 }
+
+export function isFixoBR(num) {
+  if (!num || typeof num !== "string") return false;
+
+  // Confirma formato brasileiro
+  if (!/^55\d{10,11}$/.test(num)) return false;
+
+  const ddd = num.slice(2, 4);
+  let rest = num.slice(4);
+
+  // Remove 9 se for 9 + número fixo (ex: 934423749 → 34423749)
+  if (rest.length === 9 && rest.startsWith("9") && /^[2-5]/.test(rest[1])) {
+    rest = rest.slice(1);
+  }
+
+  if (/^[2-5]\d{7}$/.test(rest)) {
+    return `55${ddd}${rest}`; // Número fixo limpo
+  }
+
+  return false;
+}

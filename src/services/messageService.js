@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { PrismaClient } from "@prisma/client";
 import { getOrCreateSession } from "../utils/sessionManager.js";
-import { normalizeNumber } from "../utils/normalizeNumber.js";
+import { normalizeNumber, isFixoBR } from "../utils/normalizeNumber.js";
 import { withTimeout } from "../utils/withTimeout.js";
 
 const prisma = new PrismaClient();
@@ -69,14 +69,22 @@ export async function sendTextMessageHandler({
         }
 
         if (!result || !result.exists) {
-          results.push({
-            to: num,
-            status: "número não encontrado no WhatsApp",
-          });
-          continue;
+          const fixoCorrigido = isFixoBR(normalized);
+          if (fixoCorrigido) {
+            console.warn(
+              `Número fixo detectado (${fixoCorrigido}), forçando envio`
+            );
+            jid = fixoCorrigido + "@s.whatsapp.net";
+          } else {
+            results.push({
+              to: num,
+              status: "número não encontrado no WhatsApp",
+            });
+            continue;
+          }
+        } else {
+          jid = result.jid;
         }
-
-        jid = result.jid;
       }
 
       console.log(`→ Enviando para: ${jid}`);
